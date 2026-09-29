@@ -2,6 +2,19 @@
 
 Modern OpenWrt build targeting MSM8916 devices with full modem, USB gadget, and WiFi support.
 
+## VPN Tether (custom build)
+
+Pre-configured build that turns the UF02 into a plug-and-play WireGuard tether:
+plug it into any PC over USB and all of that PC's traffic is routed through the
+tunnel. A single LuCI page configures it (WiFi SSID, password, paste a WireGuard
+config). See [custom-distro.md](custom-distro.md) and [vpn-tether.md](vpn-tether.md).
+
+Contributed by [@ahzay](https://github.com/ahzay).
+
+> **Flashing:** the EDL flash script erases `rootfs_data`, but on some eMMC this
+> is a no-op, so old configuration can survive a reflash. After flashing, run
+> `firstboot -y && reboot` on the device to guarantee a clean first boot.
+
 ## Table of Contents
 
 - [About OpenWrt](#about-openwrt)
