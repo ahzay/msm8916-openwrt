@@ -1,0 +1,9 @@
+#!/bin/sh
+# msm89xx-specific: present the dongle as a USB ethernet gadget (NCM).
+# (The VPN tether logic itself lives in the luci-app-vpn-tether package.)
+uci -q set usbgadget.usb.enabled='1'
+uci -q set usbgadget.ncm.enabled='1'
+uci -q set usbgadget.rndis.enabled='0'
+uci -q set usbgadget.ecm.enabled='0'
+uci -q commit usbgadget
+exit 0

@@ -1,0 +1,82 @@
+#!/bin/sh
+# First-boot defaults for luci-app-vpn-tether (generic, device-agnostic).
+# Creates the UCI skeleton + firewall rules the web UI edits. Idempotent.
+# Runs on first boot after install; a reboot is needed before the UI can apply.
+
+. /lib/functions.sh
+
+# --- NTP client (clock must be right before WireGuard) ----------------------
+uci -q set system.ntp.enabled='1'
+uci -q commit system
+/etc/init.d/sysntpd enable 2>/dev/null
+
+# --- WiFi STA skeleton (uplink details filled in by the UI) -----------------
+if [ -e /etc/config/wireless ]; then
+	uci -q set wireless.radio0.disabled='0'
+	uci -q set wireless.wan_sta=wifi-iface
+	uci -q set wireless.wan_sta.device='radio0'
+	uci -q set wireless.wan_sta.mode='sta'
+	uci -q set wireless.wan_sta.network='wwan'
+	uci -q set wireless.wan_sta.encryption='psk2'
+	uci -q set wireless.wan_sta.disabled='0'
+	uci -q commit wireless
+fi
+
+# --- Network: uplink (wwan) + WireGuard client skeleton ---------------------
+uci -q set network.wwan=interface
+uci -q set network.wwan.proto='dhcp'
+
+uci -q set network.wg0=interface
+uci -q set network.wg0.proto='wireguard'
+uci -q set network.wg0.auto='0'
+
+uci -q set network.peer=wireguard_wg0
+uci -q set network.peer.allowed_ips='0.0.0.0/0'
+uci -q set network.peer.route_allowed_ips='1'
+uci -q set network.peer.persistent_keepalive='25'
+uci -q commit network
+
+# --- DNS: no NAT64 AAAA for the WG endpoint --------------------------------
+uci -q set dhcp.@dnsmasq[0].filter_aaaa='1'
+uci -q commit dhcp
+
+# --- Firewall: uplink in the WAN zone, VPN zone for wg0, lan -> vpn only ----
+WAN_ZONE=""
+find_wan() {
+	local cfg="$1" name
+	config_get name "$cfg" name
+	[ "$name" = "wan" ] && WAN_ZONE="$cfg"
+}
+config_load firewall
+config_foreach find_wan zone
+if [ -n "$WAN_ZONE" ]; then
+	uci -q del_list "firewall.$WAN_ZONE.network=wwan"
+	uci -q add_list "firewall.$WAN_ZONE.network=wwan"
+fi
+
+uci -q delete firewall.vpn
+uci set firewall.vpn=zone
+uci set firewall.vpn.name='vpn'
+uci set firewall.vpn.network='wg0'
+uci set firewall.vpn.input='ACCEPT'
+uci set firewall.vpn.output='ACCEPT'
+uci set firewall.vpn.forward='ACCEPT'
+uci set firewall.vpn.masq='1'
+uci set firewall.vpn.mtu_fix='1'
+
+uci -q delete firewall.lan_to_vpn
+uci set firewall.lan_to_vpn=forwarding
+uci set firewall.lan_to_vpn.src='lan'
+uci set firewall.lan_to_vpn.dest='vpn'
+
+rm_lan_wan() {
+	local cfg="$1" src dest
+	config_get src "$cfg" src
+	config_get dest "$cfg" dest
+	[ "$src" = "lan" ] && [ "$dest" = "wan" ] && uci -q delete "firewall.$cfg"
+}
+config_foreach rm_lan_wan forwarding
+
+uci -q commit firewall
+
+exit 0

@@ -1,0 +1,39 @@
+#!/bin/sh
+# On every WiFi-uplink connect: resync the clock, then start WireGuard.
+#
+# WG's replay protection makes the server silently drop handshakes with a stale
+# timestamp, and once wg0 is up its default route takes over the router's own
+# traffic (no policy routing on many targets), so NTP could never sync.
+#
+# Whenever the uplink ("wwan") comes up:
+#   1. release wg0 so the router's own traffic uses the WiFi uplink,
+#   2. keep a direct default route (metric 200 fallback),
+#   3. force an NTP sync,
+#   4. then start wg0.
+[ "$ACTION" = "ifup" ] || [ "$ACTION" = "ifdown" ] || exit 0
+[ "$INTERFACE" = "wwan" ] || exit 0
+
+if [ "$ACTION" = "ifup" ]; then
+	(
+		ifdown wg0 2>/dev/null
+		sleep 2
+
+		status=$(ubus call network.interface.wwan status 2>/dev/null)
+		dev=$(echo "$status" | jsonfilter -e '@.l3_device' 2>/dev/null)
+		[ -n "$dev" ] || dev=$(echo "$status" | jsonfilter -e '@.device' 2>/dev/null)
+		gw=$(echo "$status" | jsonfilter -e '@.route[0].nexthop' 2>/dev/null)
+
+		[ -n "$gw" ] && [ -n "$dev" ] && \
+			ip route replace default via "$gw" dev "$dev" metric 200 2>/dev/null
+
+		/usr/sbin/ntpd -n -q \
+			-p 0.openwrt.pool.ntp.org -p 1.openwrt.pool.ntp.org \
+			-p 2.openwrt.pool.ntp.org -p 3.openwrt.pool.ntp.org \
+			>/dev/null 2>&1
+
+		ifup wg0
+	) &
+else
+	ifdown wg0
+	ip route del default metric 200 2>/dev/null
+fi

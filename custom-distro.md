@@ -13,33 +13,12 @@ The only thing the user does is open the web UI and fill **three fields**:
 
 ## Components
 
-### First-boot defaults — `msm89xx/base-files/etc/uci-defaults/99-vpn-tether`
-Runs once on first boot and configures:
-- USB gadget → **NCM**, AP fallback disabled
-- WiFi **STA** skeleton (`wireless.wan_sta`) + disabled AP
-- `wwan` (DHCP uplink) + `wg0` WireGuard skeleton (`auto '0'`) + empty peer
-- Firewall: WAN = `wwan`+`modem`; new `vpn` zone for `wg0` (masq); **`lan → vpn` only**; removes stock `lan → wan` (kill switch)
-- `dnsmasq` `filter_aaaa=1` (endpoint must resolve IPv4)
-- NTP enabled; SSH (dropbear) + LuCI (uhttpd) enabled
+The VPN tether functionality is a **self-contained `luci-app-vpn-tether` package**
+(`packages/luci-app-vpn-tether/`) — UI + hotplugs + generic first-boot defaults —
+so it can be dropped onto any OpenWrt with WiFi + WireGuard. Only the
+device-specific USB gadget setup stays in the image.
 
-### Clock-before-WireGuard hotplugs — `msm89xx/base-files/etc/hotplug.d/`
-The dongle has **no usable RTC**, so the clock may be stale or 1970 on boot.
-WireGuard's replay protection makes the server silently drop handshakes with a
-stale timestamp. And once `wg0` is up its default route takes over the dongle's
-own traffic (no policy routing in this kernel), so NTP could never reach the
-internet to fix it.
-
-So on **every** WiFi-uplink connect the hotplugs:
-1. release `wg0`,
-2. keep a direct default route via the WiFi uplink (metric 200 fallback),
-3. force an NTP sync (`ntpd -q`),
-4. then `ifup wg0`.
-
-- `iface/99-vpn-after-ntp` — does the above when `wwan` comes up; tears `wg0`
-  down and removes the fallback route when the uplink goes down.
-- `ntp/30-vpn-start` — also starts `wg0` whenever NTP validates the clock.
-
-### Web UI — `packages/luci-app-vpn-tether/`
+### Web UI — `packages/luci-app-vpn-tether/htdocs/..`
 A single LuCI page (`admin/services/vpn-tether`) with three inputs:
 
 - **WiFi SSID**, **WiFi Password** → `wireless.wan_sta`
@@ -48,8 +27,35 @@ A single LuCI page (`admin/services/vpn-tether`) with three inputs:
   - `[Peer]`: `PublicKey`, `PresharedKey`, `Endpoint` (host:port), `AllowedIPs`
   - sets `route_allowed_ips=1`, `persistent_keepalive=25`, `auto=0`
 
-On Apply it commits UCI, reloads WiFi, and brings up `wg0` (which, thanks to the
-hotplugs, only succeeds once the clock is valid).
+All fields are pre-filled from the current config (nothing masked) so they can be
+edited. On Apply it commits UCI, reloads WiFi, and brings up `wg0`.
+
+### First-boot defaults — `packages/luci-app-vpn-tether/root/etc/uci-defaults/99-luci-app-vpn-tether`
+Runs once after install. Generic: creates the `wwan`/`wg0`/peer/`wan_sta` UCI
+skeleton, the firewall `vpn` zone + `lan → vpn` (removing `lan → wan`),
+`dnsmasq filter_aaaa`, and enables NTP. It finds the WAN zone by name (no index
+assumptions) and does not touch the modem.
+
+### Clock-before-WireGuard hotplugs — `packages/luci-app-vpn-tether/root/etc/hotplug.d/`
+The router may have no usable RTC, so the clock can be stale on boot. WG's
+replay protection silently drops handshakes with a stale timestamp, and once
+`wg0` is up its default route takes over the router's own traffic (no policy
+routing), so NTP could never sync.
+
+So on **every** WiFi-uplink connect the hotplugs:
+1. release `wg0`,
+2. keep a direct default route via the WiFi uplink (metric 200 fallback; netdev
+   derived from `ubus network.interface.wwan status`),
+3. force an NTP sync (`ntpd -q`),
+4. then `ifup wg0`.
+
+- `iface/99-vpn-after-ntp` — does the above when `wwan` comes up; tears `wg0`
+  down and removes the fallback route when the uplink goes down.
+- `ntp/30-vpn-start` — also starts `wg0` whenever NTP validates the clock.
+
+### Device-specific (image only) — `msm89xx/base-files/`
+- `99-usb-gadget-ncm` — present the dongle as a USB ethernet gadget (NCM).
+- (plus the pre-existing modem/`qcom-soc` defaults)
 
 ## Build
 
