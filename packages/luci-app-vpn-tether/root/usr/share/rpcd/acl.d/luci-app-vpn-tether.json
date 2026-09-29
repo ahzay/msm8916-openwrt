@@ -1,0 +1,32 @@
+{
+    "luci-app-vpn-tether": {
+        "description": "Grant access to the VPN Tether setup page",
+        "read": {
+            "uci": ["network", "wireless", "dhcp"],
+            "ubus": {
+                "network.interface": ["status", "dump"],
+                "network.interface.*": ["status"],
+                "service": ["list"]
+            },
+            "file": {
+                "/etc/config/network": ["read"],
+                "/etc/config/wireless": ["read"],
+                "/etc/config/dhcp": ["read"]
+            }
+        },
+        "write": {
+            "uci": ["network", "wireless", "dhcp"],
+            "ubus": {
+                "network": ["reload"]
+            },
+            "file": {
+                "/etc/config/network": ["write"],
+                "/etc/config/wireless": ["write"],
+                "/etc/config/dhcp": ["write"],
+                "/sbin/wifi": ["exec"],
+                "/sbin/ifup": ["exec"],
+                "/bin/sh": ["exec"]
+            }
+        }
+    }
+}

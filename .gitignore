@@ -1,2 +1,7 @@
 bin
 pr_description.md
+
+backup.bin
+openwrt-working/
+firmware_uf02/
+*.bin
