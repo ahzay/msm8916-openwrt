@@ -15,6 +15,18 @@ Contributed by [@ahzay](https://github.com/ahzay).
 > is a no-op, so old configuration can survive a reflash. After flashing, run
 > `firstboot -y && reboot` on the device to guarantee a clean first boot.
 
+Notes:
+
+- **Clock:** WireGuard only starts once NTP has synced the clock. WG replay
+  protection silently drops handshakes carrying a stale timestamp (the dongle
+  has no usable RTC), so this is enforced by a hotplug.
+- **Recovery:** entering EDL is OS-independent — short USB **D+ to GND** while
+  applying power; it enumerates as `05c6:9008`.
+- **Gadget mode:** NCM (Windows 11+/Linux).
+- **Kill switch:** the PC's traffic can only egress through the VPN; if the
+  tunnel is down, the PC has no internet.
+- Keep a `backup.bin` of the stock firmware for restoring the original device.
+
 ## Table of Contents
 
 - [About OpenWrt](#about-openwrt)
